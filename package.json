@@ -2,9 +2,9 @@
   "name": "pantry-pilot-pwa",
   "version": "1.0.0",
   "description": "Intelligent pantry management PWA with voice recording and AI-powered item extraction",
-  "main": "index.js",
+  "main": "server.js",
   "scripts": {
-    "start": "node index.js",
+    "start": "node server.js",
     "heroku-postbuild": "cd backend && npm install && cd ../frontend && npm install && npm run build",
     "start:backend": "cd backend && npm run dev",
     "start:frontend": "cd frontend && npm start",
