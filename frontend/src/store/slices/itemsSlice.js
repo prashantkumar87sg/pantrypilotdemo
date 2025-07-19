@@ -2,7 +2,7 @@ import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import axios from 'axios';
 import { transformItems, transformItem } from '../../utils/dataTransform';
 
-const API_URL = 'http://pantrypilotdemo-production.up.railway.app/api';
+const API_URL = 'https://pantrypilotdemo-production.up.railway.app/api';
 
 // Async thunks for API calls
 export const fetchItems = createAsyncThunk('items/fetchItems', async () => {
