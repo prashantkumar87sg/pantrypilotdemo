@@ -6,12 +6,26 @@ const multer = require('multer');
 const path = require('path');
 require('dotenv').config();
 
-const { testConnection, initDatabase, closeDatabase } = require('./config/database');
+const { initializeDatabase } = require('./config/database');
 const itemRoutes = require('./routes/items');
 const aiRoutes = require('./routes/ai');
+const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5001;
+
+// Initialize Database
+initializeDatabase()
+  .then(() => {
+    console.log('Database connection successful. Initializing server...');
+    // The rest of the server setup should be inside this then block
+    // if it depends on the database.
+  })
+  .catch(error => {
+    console.error('FATAL: Database connection failed. Server not started.', error);
+    process.exit(1); // Exit the process if DB connection fails
+  });
+
 
 // Middleware
 app.use(helmet());
@@ -51,18 +65,6 @@ if (process.env.NODE_ENV === 'production') {
     res.sendFile(path.resolve(__dirname, '../frontend/build', 'index.html'));
   });
 }
-
-// Database connection
-const connectDB = async () => {
-  try {
-    await testConnection();
-    await initDatabase();
-    console.log('✅ Neon PostgreSQL database ready');
-  } catch (error) {
-    console.error('❌ Database initialization failed:', error.message);
-    process.exit(1);
-  }
-};
 
 // Routes
 app.use('/api/items', itemRoutes);
@@ -121,7 +123,8 @@ app.use('*', (req, res) => {
 // Start server
 const startServer = async () => {
   try {
-    await connectDB();
+    // The database initialization is now handled at the top level.
+    // We can proceed with app.listen() here.
     
     app.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
@@ -138,13 +141,13 @@ const startServer = async () => {
 // Graceful shutdown
 process.on('SIGTERM', async () => {
   console.log('SIGTERM received. Shutting down gracefully...');
-  await closeDatabase();
+  // The closeDatabase function is no longer needed here as it's handled at the top level.
   process.exit(0);
 });
 
 process.on('SIGINT', async () => {
   console.log('SIGINT received. Shutting down gracefully...');
-  await closeDatabase();
+  // The closeDatabase function is no longer needed here as it's handled at the top level.
   process.exit(0);
 });
 
