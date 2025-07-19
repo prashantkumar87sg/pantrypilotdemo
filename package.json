@@ -4,6 +4,8 @@
   "description": "Intelligent pantry management PWA with voice recording and AI-powered item extraction",
   "main": "index.js",
   "scripts": {
+    "start": "cd backend && npm start",
+    "heroku-postbuild": "cd backend && npm install && cd ../frontend && npm install && npm run build",
     "start:backend": "cd backend && npm run dev",
     "start:frontend": "cd frontend && npm start",
     "build": "cd frontend && npm run build",
