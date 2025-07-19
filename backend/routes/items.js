@@ -11,22 +11,8 @@ const router = express.Router();
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
-// Configure multer for file uploads
-const storage = multer.diskStorage({
-  destination: async (req, file, cb) => {
-    const uploadDir = path.join(__dirname, '../uploads');
-    try {
-      await fs.mkdir(uploadDir, { recursive: true });
-      cb(null, uploadDir);
-    } catch (error) {
-      cb(error);
-    }
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
-  }
-});
+// Configure multer for file uploads in memory
+const storage = multer.memoryStorage();
 
 const upload = multer({
   storage: storage,
@@ -112,11 +98,25 @@ router.post('/', upload.single('photo'), async (req, res) => {
 // POST /api/items/process-audio - Process audio transcription with AI
 router.post('/process-audio', upload.single('audio'), async (req, res) => {
   try {
-    const { transcription } = req.body;
-    
-    if (!transcription) {
-      return res.status(400).json({ error: 'Transcription is required' });
+    if (!req.file) {
+      return res.status(400).json({ error: 'Audio file is required' });
     }
+
+    // Convert audio buffer to base64 for Gemini
+    const audioBase64 = req.file.buffer.toString('base64');
+
+    const audioPart = {
+      inlineData: {
+        mimeType: req.file.mimetype,
+        data: audioBase64,
+      },
+    };
+
+    const prompt =
+      'Please transcribe this audio. The user is listing items they are running low on for a shopping list.';
+
+    const result = await model.generateContent([prompt, audioPart]);
+    const transcription = result.response.text().trim();
     
     console.log('Processing transcription:', transcription);
     
@@ -130,7 +130,7 @@ router.post('/process-audio', upload.single('audio'), async (req, res) => {
         ...itemData,
         transcription,
         aiExtracted: true,
-        audioUrl: req.file ? `/uploads/${req.file.filename}` : null,
+        // audioUrl is removed as we are not saving the file to disk
       });
       savedItems.push(item);
     }
