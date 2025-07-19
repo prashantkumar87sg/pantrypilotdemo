@@ -42,12 +42,14 @@ const upload = multer({
 
 // GET /api/items - Get all items (active and restocked)
 router.get('/', async (req, res) => {
+  console.log('--- Received request to GET /api/items ---');
   try {
     const { status, urgency, search, page = 1, limit = 50 } = req.query;
     
     const activeItems = await ItemService.getActiveItems();
     const restockedItems = await ItemService.getRestockedItems();
     
+    console.log('--- Successfully fetched items from database. Sending response. ---');
     res.json({
       activeItems,
       restockedItems,
@@ -59,7 +61,7 @@ router.get('/', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error fetching items:', error);
+    console.error('--- CRASH in GET /api/items route: ---', error);
     res.status(500).json({ error: 'Failed to fetch items' });
   }
 });
