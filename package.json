@@ -1,0 +1,27 @@
+{
+  "name": "pantry-pilot-pwa",
+  "version": "1.0.0",
+  "description": "Intelligent pantry management PWA with voice recording and AI-powered item extraction",
+  "main": "index.js",
+  "scripts": {
+    "start:backend": "cd backend && npm run dev",
+    "start:frontend": "cd frontend && npm start",
+    "build": "cd frontend && npm run build",
+    "install:all": "npm install && cd frontend && npm install && cd ../backend && npm install"
+  },
+  "keywords": [
+    "pwa",
+    "pantry",
+    "voice",
+    "ai",
+    "shopping-list"
+  ],
+  "author": "PantryPilot",
+  "license": "MIT",
+  "dependencies": {
+    "date-fns": "^2.30.0"
+  },
+  "devDependencies": {
+    "concurrently": "^7.6.0"
+  }
+}

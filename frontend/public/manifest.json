@@ -1,0 +1,44 @@
+{
+  "short_name": "PantryPilot",
+  "name": "PantryPilot - Smart Pantry Management",
+  "description": "Voice-powered pantry management with AI-driven shopping list generation",
+  "icons": [
+    {
+      "src": "favicon.ico",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/x-icon"
+    },
+    {
+      "src": "logo192.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "logo512.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#2196f3",
+  "background_color": "#ffffff",
+  "orientation": "portrait-primary",
+  "categories": ["productivity", "shopping", "utilities"],
+  "screenshots": [
+    {
+      "src": "screenshot1.png",
+      "sizes": "540x720",
+      "type": "image/png"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Quick Record",
+      "short_name": "Record",
+      "description": "Quickly record items running low",
+      "url": "/?action=record",
+      "icons": [{ "src": "mic-icon.png", "sizes": "96x96" }]
+    }
+  ]
+} 
