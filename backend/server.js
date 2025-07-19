@@ -6,7 +6,7 @@ const multer = require('multer');
 const path = require('path');
 require('dotenv').config();
 
-const { initializeDatabase } = require('./config/database');
+const { testConnection, initDatabase } = require('./config/database');
 const itemRoutes = require('./routes/items');
 const aiRoutes = require('./routes/ai');
 const errorHandler = require('./middleware/errorHandler');
@@ -15,16 +15,20 @@ const app = express();
 const PORT = process.env.PORT || 5001;
 
 // Initialize Database
-initializeDatabase()
-  .then(() => {
-    console.log('Database connection successful. Initializing server...');
-    // The rest of the server setup should be inside this then block
-    // if it depends on the database.
-  })
-  .catch(error => {
-    console.error('FATAL: Database connection failed. Server not started.', error);
-    process.exit(1); // Exit the process if DB connection fails
-  });
+async function initializeDatabase() {
+  try {
+    console.log("Attempting to connect to the database...");
+    await testConnection();
+    console.log("Database connection successful. Initializing tables...");
+    await initDatabase();
+    console.log("Database tables initialized. Starting server...");
+  } catch (error) {
+    console.error('FATAL: Database initialization failed. Server not started.', error);
+    process.exit(1); // Exit the process if DB initialization fails
+  }
+}
+
+initializeDatabase();
 
 
 // Middleware
