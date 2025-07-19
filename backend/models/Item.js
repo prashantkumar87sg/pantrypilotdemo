@@ -4,66 +4,43 @@ class ItemService {
   // Get all items with filtering options
   static async getItems({ status, urgency, search, page = 1, limit = 50, userId = null }) {
     try {
-      let query = `
-        SELECT * FROM items 
-        WHERE 1=1
-      `;
-      let countQuery = `
-        SELECT COUNT(*) as total FROM items 
-        WHERE 1=1
-      `;
-      
-      const params = [];
-      let paramIndex = 1;
-      
+      const offset = (page - 1) * limit;
+
+      // Base query
+      let query = sql`SELECT * FROM items WHERE 1=1`;
+      let countQuery = sql`SELECT COUNT(*) as total FROM items WHERE 1=1`;
+
       // Add filters
       if (status) {
-        query += ` AND status = $${paramIndex}`;
-        countQuery += ` AND status = $${paramIndex}`;
-        params.push(status);
-        paramIndex++;
+        query = sql`${query} AND status = ${status}`;
+        countQuery = sql`${countQuery} AND status = ${status}`;
       }
-      
       if (urgency) {
-        query += ` AND urgency = $${paramIndex}`;
-        countQuery += ` AND urgency = $${paramIndex}`;
-        params.push(urgency);
-        paramIndex++;
+        query = sql`${query} AND urgency = ${urgency}`;
+        countQuery = sql`${countQuery} AND urgency = ${urgency}`;
       }
-      
       if (userId) {
-        query += ` AND user_id = $${paramIndex}`;
-        countQuery += ` AND user_id = $${paramIndex}`;
-        params.push(userId);
-        paramIndex++;
+        query = sql`${query} AND user_id = ${userId}`;
+        countQuery = sql`${countQuery} AND user_id = ${userId}`;
       }
-      
       if (search) {
-        query += ` AND (name ILIKE $${paramIndex} OR notes ILIKE $${paramIndex} OR category ILIKE $${paramIndex})`;
-        countQuery += ` AND (name ILIKE $${paramIndex} OR notes ILIKE $${paramIndex} OR category ILIKE $${paramIndex})`;
-        params.push(`%${search}%`);
-        paramIndex++;
+        const searchPattern = `%${search}%`;
+        query = sql`${query} AND (name ILIKE ${searchPattern} OR notes ILIKE ${searchPattern})`;
+        countQuery = sql`${countQuery} AND (name ILIKE ${searchPattern} OR notes ILIKE ${searchPattern})`;
       }
+
+      // Add ordering
+      query = sql`${query} ORDER BY CASE urgency WHEN 'critical' THEN 3 WHEN 'medium' THEN 2 WHEN 'low' THEN 1 ELSE 0 END DESC, date_added DESC`;
       
-      // Add ordering and pagination
-      query += ` ORDER BY 
-        CASE urgency 
-          WHEN 'critical' THEN 3 
-          WHEN 'medium' THEN 2 
-          WHEN 'low' THEN 1 
-          ELSE 0 
-        END DESC, 
-        date_added DESC 
-        LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
-      
-      params.push(limit, (page - 1) * limit);
-      
+      // Add pagination
+      query = sql`${query} LIMIT ${limit} OFFSET ${offset}`;
+
       // Execute queries
-      const items = await sql(query, params);
-      const countResult = await sql(countQuery, params.slice(0, -2)); // Remove limit and offset params
+      const itemsResult = await query;
+      const countResult = await countQuery;
       
       return {
-        items,
+        items: itemsResult,
         total: parseInt(countResult[0].total),
         page: parseInt(page),
         limit: parseInt(limit),
@@ -176,35 +153,40 @@ class ItemService {
   // Update an item
   static async updateItem(id, updates) {
     try {
-      const setClause = [];
-      const values = [];
-      let paramIndex = 1;
-
-      // Build dynamic SET clause
-      Object.keys(updates).forEach(key => {
-        if (updates[key] !== undefined) {
-          // Convert camelCase to snake_case for database columns
-          const dbColumn = key.replace(/([A-Z])/g, '_$1').toLowerCase();
-          setClause.push(`${dbColumn} = $${paramIndex}`);
-          values.push(updates[key]);
-          paramIndex++;
-        }
-      });
-
-      if (setClause.length === 0) {
-        throw new Error('No fields to update');
+      if (Object.keys(updates).length === 0) {
+        // Find the item to return it if no updates are made.
+        return this.findById(id);
       }
 
-      const query = `
-        UPDATE items 
-        SET ${setClause.join(', ')}
-        WHERE id = $${paramIndex}
-        RETURNING *
-      `;
-      values.push(id);
+      const item = await sql.begin(async (tx) => {
+        // Build dynamic SET clause
+        const setClauses = Object.entries(updates)
+          .filter(([, value]) => value !== undefined)
+          .map(([key, value]) => {
+            // Convert camelCase to snake_case for database columns
+            const dbColumn = key.replace(/([A-Z])/g, '_$1').toLowerCase();
+            return sql`${sql(dbColumn)} = ${value}`;
+          });
 
-      const result = await sql(query, values);
-      return result[0] || null;
+        if (setClauses.length === 0) {
+          // If all updates were undefined, no actual update to perform
+          const [currentItem] = await tx`SELECT * FROM items WHERE id = ${id}`;
+          return currentItem;
+        }
+
+        // Add the updated_at timestamp manually
+        setClauses.push(sql`updated_at = CURRENT_TIMESTAMP`);
+        
+        const [updatedItem] = await tx`
+          UPDATE items
+          SET ${sql.join(setClauses, sql`, `)}
+          WHERE id = ${id}
+          RETURNING *
+        `;
+        return updatedItem;
+      });
+
+      return item;
     } catch (error) {
       console.error('Error updating item:', error);
       throw error;
