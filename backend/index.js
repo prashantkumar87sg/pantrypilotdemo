@@ -13,6 +13,16 @@ const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
 const PORT = process.env.PORT || 5001;
+let dbReady = false; // Database readiness flag
+
+// Health check endpoint (must be defined before any middleware that might block it)
+app.get('/api/health', (req, res) => {
+  res.status(dbReady ? 200 : 503).json({
+    status: dbReady ? 'OK' : 'Service Unavailable',
+    databaseReady: dbReady,
+    timestamp: new Date().toISOString(),
+  });
+});
 
 // Initialize Database
 async function initializeDatabase() {
@@ -22,13 +32,12 @@ async function initializeDatabase() {
     console.log("Database connection successful. Initializing tables...");
     await initDatabase();
     console.log("Database tables initialized. Starting server...");
+    dbReady = true; // Set database readiness to true after successful initialization
   } catch (error) {
     console.error('FATAL: Database initialization failed. Server not started.', error);
     process.exit(1); // Exit the process if DB initialization fails
   }
 }
-
-initializeDatabase();
 
 
 // Middleware
@@ -74,16 +83,6 @@ if (process.env.NODE_ENV === 'production') {
 app.use('/api/items', itemRoutes);
 app.use('/api/ai', aiRoutes);
 
-// Health check endpoint
-app.get('/api/health', (req, res) => {
-  res.json({
-    status: 'OK',
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-    environment: process.env.NODE_ENV || 'development',
-  });
-});
-
 // Root endpoint
 app.get('/', (req, res) => {
   res.json({
@@ -125,22 +124,17 @@ app.use('*', (req, res) => {
 });
 
 // Start server
-const startServer = async () => {
-  try {
-    // The database initialization is now handled at the top level.
-    // We can proceed with app.listen() here.
-    
-    app.listen(PORT, () => {
-      console.log(`🚀 Server running on port ${PORT}`);
-      console.log(`📱 Frontend URL: ${process.env.FRONTEND_URL || 'http://localhost:3000'}`);
-      console.log(`🌐 API URL: http://localhost:${PORT}`);
-      console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
-    });
-  } catch (error) {
-    console.error('❌ Failed to start server:', error.message);
-    process.exit(1);
-  }
-};
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`📡 Health check available at /api/health`);
+  
+  // Initialize database in the background after the server starts listening
+  initializeDatabase().catch(error => {
+    // The process will exit due to the error handler in initializeDatabase
+    // but we log it here for good measure.
+    console.error("Background database initialization failed:", error);
+  });
+});
 
 // Graceful shutdown
 process.on('SIGTERM', async () => {
@@ -154,7 +148,5 @@ process.on('SIGINT', async () => {
   // The closeDatabase function is no longer needed here as it's handled at the top level.
   process.exit(0);
 });
-
-startServer();
 
 module.exports = app; 
