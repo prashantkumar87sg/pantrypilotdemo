@@ -1,60 +1,135 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import axios from 'axios';
-import { transformItems, transformItem } from '../../utils/dataTransform';
+import { itemsService } from '../../services/itemsService';
+import { transcribeAudio, extractItemsFromText } from '../../lib/gemini';
 
-const API_URL = 'https://pantrypilotdemo-production.up.railway.app/api';
-
-// Async thunks for API calls
-export const fetchItems = createAsyncThunk('items/fetchItems', async () => {
-  const response = await axios.get(`${API_URL}/items`);
-  return response.data;
-});
-
-export const addItem = createAsyncThunk('items/addItem', async (itemData) => {
-  const response = await axios.post(`${API_URL}/items`, itemData);
-  return response.data;
-});
-
-export const updateItem = createAsyncThunk('items/updateItem', async ({ id, updates }) => {
-  const response = await axios.put(`${API_URL}/items/${id}`, updates);
-  return response.data;
-});
-
-export const deleteItem = createAsyncThunk('items/deleteItem', async (id) => {
-  await axios.delete(`${API_URL}/items/${id}`);
-  return id;
-});
-
-export const markAsRestocked = createAsyncThunk('items/markAsRestocked', async (id) => {
-  const response = await axios.put(`${API_URL}/items/${id}/restock`);
-  return response.data;
-});
-
-export const processAudioTranscription = createAsyncThunk(
-  'items/processAudioTranscription',
-  async ({ transcription, audioBlob }) => {
-    const formData = new FormData();
-    formData.append('transcription', transcription);
-    if (audioBlob) {
-      formData.append('audio', audioBlob, 'recording.webm');
+// Async thunk for fetching all items
+export const fetchItems = createAsyncThunk(
+  'items/fetchItems',
+  async (_, { rejectWithValue }) => {
+    try {
+      const [activeItems, restockedItems] = await Promise.all([
+        itemsService.getActiveItems(),
+        itemsService.getRestockedItems(),
+      ]);
+      
+      return { activeItems, restockedItems };
+    } catch (error) {
+      return rejectWithValue(error.message);
     }
-    
-    const response = await axios.post(`${API_URL}/items/process-audio`, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
-    return response.data;
+  }
+);
+
+// Async thunk for creating an item
+export const createItem = createAsyncThunk(
+  'items/createItem',
+  async (itemData, { rejectWithValue }) => {
+    try {
+      const newItem = await itemsService.createItem(itemData);
+      return newItem;
+    } catch (error) {
+      return rejectWithValue(error.message);
+    }
+  }
+);
+
+// Async thunk for updating an item
+export const updateItem = createAsyncThunk(
+  'items/updateItem',
+  async ({ id, updates }, { rejectWithValue }) => {
+    try {
+      const updatedItem = await itemsService.updateItem(id, updates);
+      return updatedItem;
+    } catch (error) {
+      return rejectWithValue(error.message);
+    }
+  }
+);
+
+// Async thunk for marking item as restocked
+export const markAsRestocked = createAsyncThunk(
+  'items/markAsRestocked',
+  async (id, { rejectWithValue }) => {
+    try {
+      const updatedItem = await itemsService.markAsRestocked(id);
+      return updatedItem;
+    } catch (error) {
+      return rejectWithValue(error.message);
+    }
+  }
+);
+
+// Async thunk for deleting an item
+export const deleteItem = createAsyncThunk(
+  'items/deleteItem',
+  async (id, { rejectWithValue }) => {
+    try {
+      await itemsService.deleteItem(id);
+      return id;
+    } catch (error) {
+      return rejectWithValue(error.message);
+    }
+  }
+);
+
+// Async thunk for processing audio with AI
+export const processAudio = createAsyncThunk(
+  'items/processAudio',
+  async (audioBlob, { rejectWithValue, dispatch }) => {
+    try {
+      // Step 1: Transcribe the audio
+      const transcription = await transcribeAudio(audioBlob);
+      
+      // Step 2: Extract items from transcription
+      const extractedItems = await extractItemsFromText(transcription);
+      
+      // Step 3: Save each item to the database
+      const savedItems = [];
+      for (const itemData of extractedItems) {
+        const item = await itemsService.createItem({
+          ...itemData,
+          transcription,
+          aiExtracted: true,
+        });
+        savedItems.push(item);
+      }
+      
+      return {
+        extractedItems: savedItems,
+        originalTranscription: transcription,
+      };
+    } catch (error) {
+      return rejectWithValue(error.message);
+    }
+  }
+);
+
+// Async thunk for searching items
+export const searchItems = createAsyncThunk(
+  'items/searchItems',
+  async (searchTerm, { rejectWithValue }) => {
+    try {
+      const results = await itemsService.searchItems(searchTerm);
+      return results;
+    } catch (error) {
+      return rejectWithValue(error.message);
+    }
   }
 );
 
 const initialState = {
   activeItems: [],
   restockedItems: [],
-  loading: false,
+  searchResults: [],
+  isLoading: false,
+  isProcessing: false,
   error: null,
-  processingAudio: false,
-  lastExtractedItems: [],
+  searchTerm: '',
+  filters: {
+    urgency: '',
+    category: '',
+  },
+  sortBy: 'urgency',
+  viewMode: 'grid', // 'grid' or 'list'
 };
 
 const itemsSlice = createSlice({
@@ -64,86 +139,110 @@ const itemsSlice = createSlice({
     clearError: (state) => {
       state.error = null;
     },
-    updateItemLocally: (state, action) => {
-      const { id, updates } = action.payload;
-      const item = state.activeItems.find(item => item._id === id);
-      if (item) {
-        Object.assign(item, updates);
-      }
+    setSearchTerm: (state, action) => {
+      state.searchTerm = action.payload;
     },
-    clearLastExtractedItems: (state) => {
-      state.lastExtractedItems = [];
+    setFilters: (state, action) => {
+      state.filters = { ...state.filters, ...action.payload };
+    },
+    setSortBy: (state, action) => {
+      state.sortBy = action.payload;
+    },
+    setViewMode: (state, action) => {
+      state.viewMode = action.payload;
+    },
+    clearSearchResults: (state) => {
+      state.searchResults = [];
+      state.searchTerm = '';
     },
   },
   extraReducers: (builder) => {
     builder
       // Fetch items
       .addCase(fetchItems.pending, (state) => {
-        state.loading = true;
+        state.isLoading = true;
         state.error = null;
       })
       .addCase(fetchItems.fulfilled, (state, action) => {
-        state.loading = false;
-        state.activeItems = transformItems(action.payload.activeItems || []);
-        state.restockedItems = transformItems(action.payload.restockedItems || []);
+        state.isLoading = false;
+        state.activeItems = action.payload.activeItems;
+        state.restockedItems = action.payload.restockedItems;
       })
       .addCase(fetchItems.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.error.message;
+        state.isLoading = false;
+        state.error = action.payload;
       })
       
-      // Add item
-      .addCase(addItem.pending, (state) => {
-        state.loading = true;
+      // Create item
+      .addCase(createItem.pending, (state) => {
+        state.isLoading = true;
+        state.error = null;
       })
-      .addCase(addItem.fulfilled, (state, action) => {
-        state.loading = false;
-        state.activeItems.unshift(transformItem(action.payload));
+      .addCase(createItem.fulfilled, (state, action) => {
+        state.isLoading = false;
+        state.activeItems.unshift(action.payload);
       })
-      .addCase(addItem.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.error.message;
+      .addCase(createItem.rejected, (state, action) => {
+        state.isLoading = false;
+        state.error = action.payload;
       })
       
       // Update item
       .addCase(updateItem.fulfilled, (state, action) => {
-        const transformedItem = transformItem(action.payload);
-        const index = state.activeItems.findIndex(item => item._id === transformedItem._id);
+        const index = state.activeItems.findIndex(item => item.id === action.payload.id);
         if (index !== -1) {
-          state.activeItems[index] = transformedItem;
+          state.activeItems[index] = action.payload;
         }
-      })
-      
-      // Delete item
-      .addCase(deleteItem.fulfilled, (state, action) => {
-        state.activeItems = state.activeItems.filter(item => item._id !== action.payload);
       })
       
       // Mark as restocked
       .addCase(markAsRestocked.fulfilled, (state, action) => {
-        const transformedItem = transformItem(action.payload);
-        state.activeItems = state.activeItems.filter(activeItem => activeItem._id !== transformedItem._id);
-        state.restockedItems.unshift(transformedItem);
+        state.activeItems = state.activeItems.filter(item => item.id !== action.payload.id);
+        state.restockedItems.unshift(action.payload);
       })
       
-      // Process audio transcription
-      .addCase(processAudioTranscription.pending, (state) => {
-        state.processingAudio = true;
+      // Delete item
+      .addCase(deleteItem.fulfilled, (state, action) => {
+        state.activeItems = state.activeItems.filter(item => item.id !== action.payload);
+      })
+      
+      // Process audio
+      .addCase(processAudio.pending, (state) => {
+        state.isProcessing = true;
         state.error = null;
       })
-      .addCase(processAudioTranscription.fulfilled, (state, action) => {
-        state.processingAudio = false;
-        const extractedItems = transformItems(action.payload.extractedItems || []);
-        state.lastExtractedItems = extractedItems;
-        // Add extracted items to active items
-        state.activeItems = [...extractedItems, ...state.activeItems];
+      .addCase(processAudio.fulfilled, (state, action) => {
+        state.isProcessing = false;
+        // Add the new items to the beginning of activeItems
+        state.activeItems.unshift(...action.payload.extractedItems);
       })
-      .addCase(processAudioTranscription.rejected, (state, action) => {
-        state.processingAudio = false;
-        state.error = action.error.message;
+      .addCase(processAudio.rejected, (state, action) => {
+        state.isProcessing = false;
+        state.error = action.payload;
+      })
+      
+      // Search items
+      .addCase(searchItems.pending, (state) => {
+        state.isLoading = true;
+      })
+      .addCase(searchItems.fulfilled, (state, action) => {
+        state.isLoading = false;
+        state.searchResults = action.payload;
+      })
+      .addCase(searchItems.rejected, (state, action) => {
+        state.isLoading = false;
+        state.error = action.payload;
       });
   },
 });
 
-export const { clearError, updateItemLocally, clearLastExtractedItems } = itemsSlice.actions;
+export const {
+  clearError,
+  setSearchTerm,
+  setFilters,
+  setSortBy,
+  setViewMode,
+  clearSearchResults,
+} = itemsSlice.actions;
+
 export default itemsSlice.reducer; 
