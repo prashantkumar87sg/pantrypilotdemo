@@ -10,4 +10,4 @@ process.chdir(path.join(__dirname, 'backend'));
 require('dotenv').config();
 
 // Start the backend server
-require('./index.js'); 
+require('./backend/index.js'); 
